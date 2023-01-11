@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Dec 28 12:29:49 2022
+
+@author: grishmamanandhar
+"""
+
+
+import os
+import sys
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from pytz import timezone
+import pytz
+import calendar
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import seaborn as sns
+import pickle
+from numpy import NaN
+os.chdir("/Users/grishmamanandhar/Documents/Documents/University/Fall 2020/Research/micro grids/AI_agent/py_codes")
+
+#importing already read data all code and functions
+import read_data_all as rda
+Data_all = rda.house(2916,'Idaho')
+
+
+#Data_all= Data_all[Data_all['regname']=='CIRCUIT_1'] #just taking one circuit 
+
+Data_all['AC_lag']= np.nan
+Data_all['AC_lag'] = Data_all['power'].shift(1)
+Data_all['AC_lag'][0]=Data_all['power'][0]
+
+
+
+#check for nans in the dataframe as it might not work for tobit estimation 
+
+#Count the number of NaN values in each column
+nan_counts_temp = Data_all['temp_TX1'].isna().sum()
+nan_counts_weath = Data_all['temp_f'].isna().sum()
+nan_counts_power = Data_all['power'].isna().sum()
+# Print the counts for the 'column_name' column
+print(f'Number of NaN values in the column temperature: {nan_counts_temp}')
+print(f'Number of NaN values in the column weather: {nan_counts_weath}')
+print(f'Number of NaN values in the column power: {nan_counts_power}')
+
+#ambient temperature nans
+
+# Find the indices of the missing values
+#missing_indices = np.where(np.isnan(Data_all['temp_f']))
+Data_all['temp_f_original'] = Data_all['temp_f']
+Data_all['temp_prev'] = Data_all['temp_f']
+#shifting temp data by 1 day and filling Nan values.
+#below it is backfilling from prior day. If first day itself has missing values..
+# you can try filling from next day as well. You would have to change the shift to be -96
+while np.isnan(Data_all['temp_f']).any():
+    missing_indices =  np.where(np.isnan(Data_all['temp_f']))
+    if missing_indices[0][1] <=96:
+        Data_all['temp_prev'] = Data_all['temp_prev'].shift(-96)
+    else:
+        Data_all['temp_prev'] = Data_all['temp_prev'].shift(96)
+    ind= np.where(np.isnan(Data_all['temp_f']))
+    for i in ind:
+        Data_all['temp_f'][i]= Data_all['temp_prev'][i]
+
+
+#CREATING A DATAFRAME WITHOUT NANS for all estimations
+#create a dataframe with no nans
+
+Data_all['int_lag']=Data_all['temp_TX1'].shift(1)
+Data_all['int_lag'][0]=Data_all['temp_TX1'][0]
+
+mask = pd.notnull(Data_all['temp_TX1']) & pd.notnull(Data_all['int_lag'])
+
+
+
+# Use the mask to select the rows that meet the condition
+MergedAll= Data_all[mask]
+
+
+MergedAll["CDD_out"]=MergedAll['temp_f']-65
+MergedAll['CDD_out'].describe()
+
+MergedAll['CDD_in']=MergedAll['temp_TX1']-65
+MergedAll['CDD_in'].describe()
+
+MergedAll['CDD_in_out']=MergedAll['CDD_out']*MergedAll['CDD_in']
+#MergedAll['temp_in_out']=MergedAll['temp_amb']*MergedAll['TX1_temp']
+
+#MergedAll['CDD_in_out'].isna().sum()
+#prediction
+#to get the tobit predictions of nans in the dataframe, we start by filling the ambient temperature Nans with the surrounding data. 
+# then we get the intenral temperature predictions for the tobit estimates where int.temp is nan
+
+
+
+
+#internal temperature predictions for NAns
+import scipy.stats as stats
+import statsmodels.formula.api as smf
+import statsmodels.base.model as smclass
+import pandas as pd
+import matplotlib.pyplot as plt
+import patsy as pt
+import statsmodels.api as sm
+
+
+# MergedAll['int_lag']= np.nan
+# MergedAll['int_lag'] = MergedAll['temp_TX1'].shift(1)
+# MergedAll['int_lag'][0]=MergedAll['temp_TX1'][0]
+        
+
+
+y1, X1 = pt.dmatrices('temp_TX1 ~ temp_f+int_lag+power+AC_lag+lnight+earlymorning+morning+midday+aftnoon+evening+night',
+               data=MergedAll, return_type='dataframe')
+#y, X = pt.dmatrices('cost ~ temp_amb + TX1_temp+earlymorning+morning+noon+midday+aftnoon+evening+night+temp_int_ext',
+                   # data=Merged1, return_type='dataframe')
+#y=pd.DataFrame.to_numpy(y)
+#X = pd.DataFrame.to_numpy(X)
+
+# generate starting solution:
+reg_ols1= smf.ols(formula='temp_TX1 ~ temp_f+int_lag+power+AC_lag+lnight+earlymorning+morning+midday+aftnoon+evening+night',
+                    data=MergedAll, return_type='dataframe')
+results_ols1 = reg_ols1.fit()
+
+print('OLS results for Comparision')
+print(f'results_ols1.summary(): \n{results_ols1.summary()}\n')
+
+ols_b= results_ols1.params
+
+#TOBIT estimate from Dr. Olvar
+import math
+import TobitModel
+ 
+y_col  = 'cost'
+y = MergedAll[y_col].values
+
+x_cols = ['CDD_out', 'CDD_in','lnight','earlymorning','morning','aftnoon','midday','evening','night','CDD_in_out']
+x = MergedAll[x_cols].values
+# add a constant
+x = np.c_[x, np.ones(len(MergedAll))]
+x_cols.append('constant')
+x_cols.append('scale')
+
+#
+# do a Tobit model
+tm = TobitModel.Tobit(y,x)
+tm.set_ylabel(y_col)
+tm.set_xlabel(x_cols)
+
+rc = tm.fit(tol=1.0e-8)
+if rc!=0:
+    print('Maximum likelihood estimate not found')
+else:
+    tm.print_mle()
+    tm.print_struct_params()
+
+Data_all['org_int_lag']= Data_all['int_lag']
+
+#for prediction of internal temperature (if first value is null then take int_lag value for next day same time period and so on)
+kk=96
+while np.isnan(Data_all['int_lag'][0]):
+    Data_all['int_lag'][0]=Data_all['int_lag'][kk]
+    kk=kk+96
+
+Data_all['pred_int_temp']=np.nan
+#Data_all['org_int_lag']= Data_all['int_lag']
+#i=0
+for i in range(0,len(Data_all)):
+    #print(i)
+    Exog = Data_all[['temp_f','int_lag','power','AC_lag','lnight','earlymorning','morning','midday','aftnoon','evening','night']][i:i+1]
+    Predict = results_ols1.predict(Exog)
+    Data_all['pred_int_temp'][i]=Predict
+    if i < len(Data_all)-1:
+        Data_all['int_lag'][i+1] = Data_all['pred_int_temp'][i]
+    
+  
+#for i in range(0,10):
+#    print(i)    
+# Data_all['final_temp_in']=np.nan
+Data_all['int_lag'].isna()
+# for i in range(0,len(Data_all)):
+#     if np.isnan(Data_all['temp_TX1'][i]):
+#         Data_all['final_temp_in'][i]=Data_all['pred_int_temp'][i]
+#     else:
+#         Data_all['final_temp_in'][i]=Data_all['temp_TX1'][i]
+
+Data_all["CDD_out"]=Data_all['temp_f']-65
+Data_all['CDD_out'].describe()
+
+Data_all['CDD_in']=Data_all['pred_int_temp']-65
+Data_all['CDD_in'].describe()
+
+Data_all['CDD_in_out']=Data_all['CDD_out']*Data_all['CDD_in']
+#tobit predictions
+x_cols = ['CDD_out', 'CDD_in','lnight','earlymorning','morning','aftnoon','midday','evening','night','CDD_in_out']
+x = Data_all[x_cols].values
+# add a constant
+x = np.c_[x, np.ones(len(Data_all))]
+x_cols.append('constant')
+x_cols.append('scale')
+
+Data_all['wtp'] = tm.yhat(x)
+
+#get parameters assigned to variables
+b, s =  tm.get_struct_params()
+
+#validating output of tobit
+
+#test_column = Data_all[['CDD_out', 'CDD_in','lnight','earlymorning','morning','aftnoon','midday','evening','night','CDD_in_out']]
+#test_column = test_column[0:4]
+#test_column['constant'] = 1
+#test_value = np.dot(test_column, b)
+#thermostat set point prediction 
+
+ 
+
+fig, ax1 = plt.subplots(figsize =(11,6))
+
+# Plot the data on the first y-axis
+sns.lineplot(Data_all['hour'], Data_all['temp_f'], color='b')
+ax1.set_ylabel('temp_out', color='b')
+
+# Create the second y-axis
+ax2 = ax1.twinx()
+
+# Plot the data on the second y-axis
+sns.lineplot(Data_all['hour'], Data_all['wtp'], color='r')
+ax2.set_ylabel('wtp', color='r')
+
+# Show the plot
+plt.title('house 10406, washington')
+plt.show()
+
+
+
+
+#############---------------OPTIMIZATION-----###########################################################
+#FOR WTP
+const_columns =  Data_all[['CDD_out', 'CDD_in','lnight','earlymorning','morning','aftnoon','midday','evening','night','CDD_in_out']]
+const_columns = const_columns[60:64]
+const_columns['CDD_in'] = 0
+const_columns['constant'] = 1
+wtp_betas = b
+sigma = s
+
+c1= np.dot(const_columns, b)
+
+#FOR INT TEMP
+
+const_columns_temp = Data_all[['temp_f','int_lag','power','AC_lag','lnight','earlymorning','morning','midday','aftnoon','evening','night']]
+const_columns_temp = const_columns_temp[60:64]
+const_columns_temp['constant'] = 1
+const_columns_temp =const_columns_temp[['constant','temp_f','int_lag','power','AC_lag','lnight','earlymorning','morning','midday','aftnoon','evening','night']]
+const_columns_temp[['power','int_lag','AC_lag']] = 0
+
+int_temp_betas = ols_b
+
+a1 = np.dot(const_columns_temp,int_temp_betas)
+
+
+
+
+
+
