@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Jan  8 10:50:41 2023
+
+@author: grishmamanandhar
+"""
+
+import scipy.linalg as la
+import numpy as np
+import scipy.optimize as opt
+import matplotlib.pyplot as plt
+import pandas as pd
+ 
+np.set_printoptions(precision=3, suppress=True)
+ 
+from scipy import optimize as opt
+ 
+#We will optimize:
+#   f(x)=−(2xy+2x−x^2−2y^2)
+#    subject to the constraints
+#   x^3−y=0
+#   y−(x−1)^4−2≥0
+#    and the bounds
+#   0.5≤x≤1.5
+#   1.5≤y≤2.5
+ 
+# Define the objective function:
+def f(x):
+    return -(2*x[0]*x[1] + 2*x[0] - x[0]**2 - 2*x[1]**2)
+ 
+# Create a plot of the problem:
+   
+x = np.linspace(0, 3, 100)
+y = np.linspace(0, 3, 100)
+X, Y = np.meshgrid(x, y)
+Z = f(np.vstack([X.ravel(), Y.ravel()])).reshape((100,100))
+plt.contour(X, Y, Z, np.arange(-1.99,10, 1), cmap='jet');
+plt.plot(x, x**3, 'k:', linewidth=1)
+plt.plot(x, (x-1)**4+2, 'k:', linewidth=1)
+plt.fill([0.5,0.5,1.5,1.5], [2.5,1.5,1.5,2.5], alpha=0.3)
+plt.axis([0,3,0,3])
+ 
+# Define the constraints:
+cons = ({'type': 'eq',
+         'fun' : lambda x: np.array([x[0]**3 - x[1]])},
+         #'jac' : lambda x: np.array([3.0*(x[0]**2.0), -1.0])},
+        {'type': 'ineq',
+         'fun' : lambda x: np.array([x[1] - (x[0]-1)**4 - 2])})
+ 
+bnds = ((0.5, 1.5), (1.5, 2.5))
+ 
+# Establish starting values for the optimal solution:
+x0 = [0, 2.5]
+ 
+# Unconstrained Optimization
+ux = opt.minimize(f, x0, constraints=None)
+print(f'Unconstrained Optimization: \n {ux}')
+ 
+# Constrained Optimization
+cx = opt.minimize(f, x0, bounds=bnds, constraints=cons)
+print(f'Constrained Optimization: \n {cx}')
+ 
+# Plot the Constrained Optimization Solution
+x = np.linspace(0, 3, 100)
+y = np.linspace(0, 3, 100)
+X, Y = np.meshgrid(x, y)
+Z = f(np.vstack([X.ravel(), Y.ravel()])).reshape((100,100))
+plt.contour(X, Y, Z, np.arange(-1.99,10, 1), cmap='jet');
+plt.plot(x, x**3, 'k:', linewidth=1)
+plt.plot(x, (x-1)**4+2, 'k:', linewidth=1)
+plt.text(ux['x'][0], ux['x'][1], 'x', va='center', ha='center', size=20, color='blue')
+plt.text(cx['x'][0], cx['x'][1], 'x', va='center', ha='center', size=20, color='red')
+plt.fill([0.5,0.5,1.5,1.5], [2.5,1.5,1.5,2.5], alpha=0.3)
+plt.axis([0,3,0,3]);
+
+
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+def f(x, y):
+    return x**2 + y**2
+
+# Generate a grid of x and y values
+x = np.linspace(-2, 2, 5)
+y = np.linspace(-2, 2, 5)
+X, Y = np.meshgrid(x, y)
+
+# Calculate the function values on the grid
+Z = f(X, Y)
+
+# Create the contour plot
+plt.contour(X, Y, Z, levels=10)
+
+# Display the plot
+plt.show()
+
+
+
+
+import numpy as np
+from scipy.optimize import minimize
+
+def f(x):
+    return -(2*x[0]*x[1] + 2*x[0] - x[0]**2 - 2*x[1]**2)
+
+def constraint1(x):
+    return np.array([x[0]**3 - x[1]])
+
+def constraint2(x):
+    return np.array([x[1] - (x[0] - 1)**4 - 2])
+
+x0 = np.array([1, 2])
+constraints = [{'type': 'eq', 'fun': constraint1},
+               {'type': 'ineq', 'fun': constraint2}]
+bounds = [(0.5, 1.5), (1.5, 2.5)]
+res = minimize(f, x0, method='SLSQP', constraints=constraints, bounds=bounds)
+print(res.x)
+
+
+
+
+
+
+
+
+
+
+#We will optimize:
+#f(x)= 1*x[0]+1*x[0]^2+ 1*x[1]^2 + 1*x[1] + 1*x[0]*x[1] + 1*x[1]*T
+#T = 19 + 2*x[0]
+
+#   P = 0.4
+#   wtp0 = stats.norm.cdf((z0 + cd_in0*Beta)/Sigma) * (z[0 + cd_in0*Beta) + Sigma * stats.norm.pdf((z[t+0] + cd_in[t+0]*Beta)/Sigma)
+
+#subject to the constraints
+#   x^3−y=0
+#   y−(x−1)^4−2≥0
+#    and the bounds
+#   0.5≤x≤1.5
+#   1.5≤y≤2.5
+ 
+P = 0.10
+
+Beta_cd_in = -0.0215014
+Sigma = 0.0808518
+  
+ac_t_min_1 = 2
+t_in_min_1 =72.1
+  
+b_ac= 0.06309797902400716
+b_ac_lag=-0.19643248836938
+b_t_lag = 0.9682028794979383
+
+
+# z_t0 =0.0402564
+# z_t1 =0.044233
+# z_t2 =0.0468858
+# z_t3 =0.0495757
+
+# w0=2.35133
+# w1=2.35481
+# w2=2.35713
+# w3=2.35944
+
+
+z_t0 =float(c1[0])
+z_t1 =float(c1[1])
+z_t2 =float(c1[2])
+z_t3 =float(c1[3])
+
+w0=float(a1[0])
+w1=float(a1[1])
+w2=float(a1[2])
+w3=float(a1[3])
+
+
+
+import numpy as np
+from scipy.optimize import minimize
+from scipy import stats
+def f(x):
+   
+    
+    t_in0 = w0 + x[0]*b_ac + ac_t_min_1*b_ac_lag + t_in_min_1*b_t_lag
+    cd_in_t0 = np.maximum(t_in0-67,0)
+    wtp0 = stats.norm.cdf((z_t0 + cd_in_t0*Beta_cd_in)/Sigma) * (z_t0 + cd_in_t0*Beta_cd_in) + Sigma * stats.norm.pdf((z_t0 + cd_in_t0*Beta_cd_in)/Sigma)
+    
+    t_in1 = w1 + x[1]*b_ac + x[0]*b_ac_lag + t_in0*b_t_lag
+    cd_in_t1 = np.maximum(t_in1-67,0)
+    wtp1 = stats.norm.cdf((z_t1 + cd_in_t1*Beta_cd_in)/Sigma) * (z_t1 + cd_in_t1*Beta_cd_in) + Sigma * stats.norm.pdf((z_t1 + cd_in_t1*Beta_cd_in)/Sigma)
+    
+    t_in2 = w2 + x[2]*b_ac + x[1]*b_ac_lag + t_in1*b_t_lag
+    cd_in_t2 = np.maximum(t_in2-67,0)
+    wtp2 = stats.norm.cdf((z_t2 + cd_in_t2*Beta_cd_in)/Sigma) * (z_t2 + cd_in_t2*Beta_cd_in) + Sigma * stats.norm.pdf((z_t2 + cd_in_t2*Beta_cd_in)/Sigma)
+    
+    t_in3 = w3 + x[3]*b_ac + x[2]*b_ac_lag + t_in2*b_t_lag
+    cd_in_t3 = np.maximum(t_in3-67,0)
+    wtp3 = stats.norm.cdf((z_t3 + cd_in_t3*Beta_cd_in)/Sigma) * (z_t3 + cd_in_t3*Beta_cd_in) + Sigma * stats.norm.pdf((z_t3 + cd_in_t3*Beta_cd_in)/Sigma)    
+    
+    return (x[0]*(P-wtp0) + x[1]*(P-wtp1) + x[2]*(P-wtp2) + x[3]*(P-wtp3))
+
+
+def constraint1(x):
+    t_in0 = w0 + x[0]*b_ac + ac_t_min_1*b_ac_lag + t_in_min_1*b_t_lag
+    return np.array(-t_in0+74)
+def constraint2(x):
+    t_in0 = w0 + x[0]*b_ac + ac_t_min_1*b_ac_lag + t_in_min_1*b_t_lag
+    t_in1 = w1 + x[1]*b_ac + x[0]*b_ac_lag + t_in0*b_t_lag
+    return np.array(-t_in1+74)
+def constraint3(x):
+    t_in0 = w0 + x[0]*b_ac + ac_t_min_1*b_ac_lag + t_in_min_1*b_t_lag
+    t_in1 = w1 + x[1]*b_ac + x[0]*b_ac_lag + t_in0*b_t_lag
+    t_in2 = w2 + x[2]*b_ac + x[1]*b_ac_lag + t_in1*b_t_lag
+    return np.array(-t_in2+74)
+def constraint4(x):
+    t_in0 = w0 + x[0]*b_ac + ac_t_min_1*b_ac_lag + t_in_min_1*b_t_lag
+    t_in1 = w1 + x[1]*b_ac + x[0]*b_ac_lag + t_in0*b_t_lag
+    t_in2 = w2 + x[2]*b_ac + x[1]*b_ac_lag + t_in1*b_t_lag
+    t_in3 = w3 + x[3]*b_ac + x[2]*b_ac_lag + t_in2*b_t_lag
+    return np.array(-t_in3+72)
+
+x0 = np.array([2, 2,1,2])
+constraints = [{'type': 'ineq', 'fun': constraint1},
+               {'type': 'ineq', 'fun': constraint2},
+               {'type': 'ineq', 'fun': constraint3},
+               {'type': 'ineq', 'fun': constraint4}]
+bounds = [(0, 2.5),(0, 2.5),(0, 2.5),(0, 2.5) ]
+res = minimize(f,x0, method='SLSQP', constraints=constraints, bounds=bounds)
+print(res)
+
+
+
+
+
