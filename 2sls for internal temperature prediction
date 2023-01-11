@@ -1,0 +1,120 @@
+import numpy as np
+import pandas as pd
+import linearmodels.iv as iv
+import linearmodels.system as iv3
+import statsmodels.formula.api as smf
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+import scipy.stats as stats
+
+import os
+import sys
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from pytz import timezone
+import pytz
+import calendar
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import seaborn as sns
+import pickle
+from numpy import NaN
+os.chdir("/Users/grishmamanandhar/Documents/Documents/University/Fall 2020/Research/micro grids/AI_agent/py_codes")
+
+#importing already read data all code and functions
+import read_data_all as rda
+Data_all = rda.house(2916,'Idaho')
+
+
+#Data_all= Data_all[Data_all['regname']=='CIRCUIT_1'] #just taking one circuit 
+
+Data_all['AC_lag']= np.nan
+Data_all['AC_lag'] = Data_all['power'].shift(1)
+Data_all['AC_lag'][0]=Data_all['power'][0]
+
+
+
+#check for nans in the dataframe as it might not work for tobit estimation 
+
+#Count the number of NaN values in each column
+nan_counts_temp = Data_all['temp_TX1'].isna().sum()
+nan_counts_weath = Data_all['temp_f'].isna().sum()
+nan_counts_power = Data_all['power'].isna().sum()
+# Print the counts for the 'column_name' column
+print(f'Number of NaN values in the column temperature: {nan_counts_temp}')
+print(f'Number of NaN values in the column weather: {nan_counts_weath}')
+print(f'Number of NaN values in the column power: {nan_counts_power}')
+
+#ambient temperature nans
+
+# Find the indices of the missing values
+#missing_indices = np.where(np.isnan(Data_all['temp_f']))
+Data_all['temp_f_original'] = Data_all['temp_f']
+Data_all['temp_prev'] = Data_all['temp_f']
+#shifting temp data by 1 day and filling Nan values.
+#below it is backfilling from prior day. If first day itself has missing values..
+# you can try filling from next day as well. You would have to change the shift to be -96
+while np.isnan(Data_all['temp_f']).any():
+    missing_indices =  np.where(np.isnan(Data_all['temp_f']))
+    if missing_indices[0][1] <=96:
+        Data_all['temp_prev'] = Data_all['temp_prev'].shift(-96)
+    else:
+        Data_all['temp_prev'] = Data_all['temp_prev'].shift(96)
+    ind= np.where(np.isnan(Data_all['temp_f']))
+    for i in ind:
+        Data_all['temp_f'][i]= Data_all['temp_prev'][i]
+
+
+#CREATING A DATAFRAME WITHOUT NANS for all estimations
+#create a dataframe with no nans
+
+Data_all['int_lag']=Data_all['temp_TX1'].shift(1)
+Data_all['int_lag'][0]=Data_all['temp_TX1'][0]
+
+mask = pd.notnull(Data_all['temp_TX1']) & pd.notnull(Data_all['int_lag'])
+
+
+
+# Use the mask to select the rows that meet the condition
+MergedAll= Data_all[mask]
+
+
+MergedAll["CDD_out"]=MergedAll['temp_f']-65
+MergedAll['CDD_out'].describe()
+
+MergedAll['CDD_in']=MergedAll['temp_TX1']-65
+MergedAll['CDD_in'].describe()
+
+MergedAll['CDD_in_out']=MergedAll['CDD_out']*MergedAll['CDD_in']
+#MergedAll['temp_in_out']=MergedAll['temp_amb']*MergedAll['TX1_temp']
+
+#MergedAll['CDD_in_out'].isna().sum()
+#prediction
+#to get the tobit predictions of nans in the dataframe, we start by filling the ambient temperature Nans with the surrounding data. 
+# then we get the intenral temperature predictions for the tobit estimates where int.temp is nan
+
+#######-----IV estimate for internal temperature prediction-----#######
+import linearmodels.iv as iv
+import linearmodels.system as iv3
+import statsmodels.formula.api as smf
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+import scipy.stats as stats
+
+reg_iv1 = iv.IV2SLS.from_formula(
+    'temp_TX1 ~ temp_f+int_lag+AC_lag+lnight+earlymorning+morning+midday+aftnoon+evening+night +'
+    '[power ~ pf]', data=MergedAll)
+results_iv1 = reg_iv1.fit(cov_type='unadjusted', debiased=True)
+ 
+# print results:
+table_iv1 = pd.DataFrame({'b': round(results_iv1.params, 4),
+                          'se': round(results_iv1.std_errors, 4),
+                          't': round(results_iv1.tstats, 4),
+                          'pval': round(results_iv1.pvalues, 4)})
+ 
+print('IV Regression: Results for internal temperature')
+print(f'table_iv1: \n{table_iv1}\n')
+print(f'results_iv1.summary: \n{results_iv1.summary}\n')
+
+
