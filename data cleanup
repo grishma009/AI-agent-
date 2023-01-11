@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Dec 28 12:25:26 2022
+
+@author: grishmamanandhar
+"""
+
+import os
+import sys
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from pytz import timezone
+import pytz
+import calendar
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import seaborn as sns
+import pickle
+from numpy import NaN
+os.getcwd()
+def get_data():
+    points= pd.read_csv('/Users/grishmamanandhar/Documents/Documents/University/Fall 2020/Research/\
+micro grids/AI_agent/Data/points.csv')
+    
+    central_ac_houses = points[points['circuit_label_type_desc']=='Central AC']
+    unq_central = central_ac_houses.ee_site_id.unique()
+    
+    
+    sites= pd.read_csv('/Users/grishmamanandhar/Documents/Documents/University/Fall 2020/Research/\
+micro grids/AI_agent/Data/sites.csv')
+    
+    int_temp_point = pd.read_csv('/Users/grishmamanandhar/Documents/Documents/University/Fall 2020/Research/\
+micro grids/AI_agent/Data/temperature-points.csv')
+    
+    int_temp_with_central_AC= int_temp_point[int_temp_point['ee_site_id'].isin(central_ac_houses['ee_site_id'])]
+    
+    
+    central_AC_sites_TempStation = int_temp_with_central_AC.merge( sites, on ="ee_site_id", how = 'left' )
+    AC_sites_final= central_AC_sites_TempStation.merge(central_ac_houses, on ="ee_site_id", how = 'left')
+    
+    
+    folder= ['2021_Q2_v7','2021_Q3_v7','2021_Q3_v7','2021_Q3_v7']
+    month = ['Jun','Jul','Aug','Sep']
+    path1= 'temperature'
+    path2= 'weather'
+    path3= 'power'
+    tempfiles = []
+    weathfiles = []
+    powerfiles = []
+    tempdata = pd.DataFrame()
+    powerdata = pd.DataFrame() 
+    weatherdata = pd.DataFrame()
+    for xx in range(0,len(folder)):
+        mpath = '/Users/grishmamanandhar/Documents/Documents/University/Fall 2020/Research/micro grids/AI_agent/\
+Data/{}/{}/'.format(folder[xx],month[xx])
+    
+        p1 = mpath + path1 +"/"
+        p2 = mpath + path2 +"/"
+        p3 = mpath + path3 +"/"
+        print(folder[xx],month[xx])
+        #t =os.listdir(p1)
+        #w = os.listdir(p2)
+        #p= os.listdir(p3)
+        tempfiles = os.listdir(p1)
+        tempfiles = tempfiles
+        weathfiles = os.listdir(p2)
+        powerfiles = os.listdir(p3)
+        
+    
+        for i in tempfiles:
+            print(i)
+            temp = pd.read_csv(p1 + i)
+            temp = temp[temp['ee_site_id'].isin(AC_sites_final['ee_site_id'])]
+            tempdata = tempdata.append(temp)
+        
+            
+           
+        for j in powerfiles:
+            print(j)
+            power = pd.read_csv(p3 + j)
+            power = power[power['ee_site_id'].isin(AC_sites_final['ee_site_id'])]
+            powerdata = powerdata.append(power)
+            
+        
+        
+        for k in weathfiles:
+            print(k)
+            weather = pd.read_csv(p2 + k)
+            weather = weather[weather['station_id'].isin(AC_sites_final['station_id'])]
+            weatherdata = weatherdata.append(weather)
+    
+    return AC_sites_final, tempdata, powerdata, weatherdata
+
+#to do a one time read of all files and create the data objects
+#AC_sites_final, tempdata,powerdata,weatherdata = get_data()
+
+###to save python variable to disk
+#import pickle
+#with open("/Users/grishmamanandhar/Documents/Documents/University/Fall 2020/Research/micro grids/AI_agent/Data/Python_dataobj/py_variables.pkl","wb") as f:
+#pickle.dump({"AC_sites_final":AC_sites_final, "powerdata": powerdata, "tempdata":tempdata, "weatherdata":weatherdata},f)
+
+
+def house_data(hid):
+    data1 = powerdata[powerdata['ee_site_id']==hid]
+    pdata = data1[data1['regname'].isin(AC_sites_final.regname[AC_sites_final['ee_site_id']==hid])]
+    pdata = pdata.set_index('min_t')
+    pdata = pdata.sort_index()
+    
+    data2 = tempdata[tempdata['ee_site_id']==hid]
+    tdata = data2[data2['transmitter_code'].isin(AC_sites_final.transmitter_code[AC_sites_final['ee_site_id']==hid])]
+    
+
+    tdata1 = tdata.pivot(index="min_t", columns="transmitter_code")
+    tdata1.columns = ['_'.join(col) for col in tdata1.columns.values]
+    
+    tdata1 = tdata1.sort_index()
+
+    wdata = weatherdata[weatherdata['station_id'].isin(AC_sites_final.station_id[AC_sites_final['ee_site_id']==hid])]
+    wdata = wdata.set_index('min_t')
+    wdata = wdata.sort_index()
+    return(pdata,tdata1,wdata)
+
+#power,temp,weath = house_data(2916)
+
+def update_data(power, temp, weath):    
+    Data = pd.DataFrame()
+    Data['all_time']=pd.date_range(start = pd.to_datetime('2021-6-1 00:00:00'),end = pd.to_datetime('2021-9-30 23:45:00'), freq='15T')
+    
+    
+    power = power.reset_index()
+    power.min_t = pd.to_datetime(power.min_t, format = '%Y-%m-%d %H:%M:%S')
+    weath = weath.reset_index()
+    weath.min_t = pd.to_datetime(weath.min_t, format = '%Y-%m-%d %H:%M:%S')
+    temp = temp.reset_index()
+    temp.min_t = pd.to_datetime(temp.min_t, format = '%Y-%m-%d %H:%M:%S')
+    
+    Data1 = pd.merge(Data,power, how='left',left_on=['all_time'],right_on=['min_t'])
+    Data2 =pd.merge(Data1,weath, how='left',left_on=['all_time'],right_on=['min_t'])
+    Data_all = pd.merge(Data2,temp, how='left',left_on=['all_time'],right_on=['min_t'])
+    
+    
+    Data_all.all_time = pd.to_datetime(Data_all.all_time, format = '%Y-%m-%d %H:%M:%S')   
+    Data_all = Data_all.set_index('all_time').sort_index()
+    Data_all.index = Data_all.index.tz_localize('UTC')
+    Data_all.index = Data_all.index.tz_convert('US/Mountain')
+    Data_all = Data_all[(Data_all.index >= '2021-06-01') & (Data_all.index < '2021-09-01')]
+    
+    #resetting the index for finding time dummies 
+    Data_all = Data_all.reset_index()
+    
+    Data_all['year'] = Data_all.all_time.dt.year
+    Data_all['week'] = Data_all.all_time.dt.week
+    Data_all[ 'day'] = Data_all.all_time.dt.dayofweek
+    Data_all['hour'] = Data_all.all_time.dt.hour
+    Data_all['month']= Data_all.all_time.dt.month
+    Data_all = Data_all.set_index('all_time').sort_index()
+    
+     
+     # all_time of day dummies ( 3 hours)
+    Data_all['lnight'] = 0
+    Data_all['earlymorning' ] = 0
+    Data_all['morning'] = 0
+    Data_all['noon'] = 0
+    Data_all['midday'  ] = 0
+    Data_all['aftnoon' ] = 0
+    Data_all['evening' ] = 0
+    Data_all['night' ] = 0
+    
+    Data_all.loc[Data_all['hour'].isin([1,2,3]),'lnight'] = 1
+    Data_all.loc[Data_all['hour'].isin([4,5,6]),'earlymorning' ] = 1
+    Data_all.loc[Data_all['hour'].isin([7,8,9]),'morning'] = 1
+    Data_all.loc[Data_all['hour'].isin([10,11,12]),'noon'] = 1
+    Data_all.loc[Data_all['hour'].isin([13,14,15]),'midday'  ] = 1
+    Data_all.loc[Data_all['hour'].isin([16,17,18]),'aftnoon' ] = 1
+    Data_all.loc[Data_all['hour'].isin([19,20,21]),'evening' ] = 1
+    Data_all.loc[Data_all['hour'].isin([22,23,0]),'night' ] = 1
+    #Data_all.loc[Data_all['hour'].isin([17,18,19,20,21]),'peak' ] = 1 
+    return(Data_all)    
+    
+    
+    
+def monthly_charge_Idaho(Data_all):    
+    #source:https://www.idahopower.com/accounts-service/understand-your-bill/pricing/idaho-pricing/for-your-home/
+    # sum the total monthly usage 
+    total = Data_all['power'].groupby(pd.Grouper(freq='M')).sum()
+    #total =Data_all.groupby('month').sum()['power']
+    total = total.to_frame()
+    total =total.reset_index()
+     
+    
+    #monthly electric charge for Idaho from Idaho power rate structure
+    charge_basic= 5
+    charge_first800= 0.086518
+    charge_801_to_2000 = 0.104033
+    charge_over2000 =0.12358
+    
+    total['monthly_charge']=np.nan
+    total['charge_perkw']=np.nan
+    
+    for ii in range(0,len(total)):
+        monthly_usage = total.power[ii]/4
+        if monthly_usage <= 800:
+            charge1= charge_first800*monthly_usage
+        if monthly_usage>800 and monthly_usage<=2000:
+            charge1 = charge_first800*800+charge_801_to_2000*(monthly_usage-800)
+        else:
+            if monthly_usage>2000:
+                charge1 = charge_first800*800+charge_801_to_2000*1200+charge_over2000*(monthly_usage-2000)
+    
+        Monthly_charge = charge_basic+charge1
+        charge_perKWh = Monthly_charge/monthly_usage
+        total['monthly_charge'][ii]=Monthly_charge
+        total['charge_perkw'][ii]=charge_perKWh
+    
+    total['month']= total.all_time.dt.month
+    total =total.rename(columns={'power': 'monthly_consumption_kw'})
+    total = total.drop(columns=['all_time'])
+    Data_all = Data_all.reset_index()
+    Data_all=Data_all.merge(total, how ='left', on='month')
+    Data_all = Data_all.set_index('all_time').sort_index()   
+    return(Data_all)
+
+ 
+def monthly_charge_WA(Data_all): 
+    #https://s3.us-west-2.amazonaws.com/secure.notion-static.com/67fb7b49-b524-480c-baa8-5dfe1dcff974/waeratehist.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=AKIAT73L2G45EIPT3X45%2F20230106%2Fus-west-2%2Fs3%2Faws4_request&X-Amz-Date=20230106T232309Z&X-Amz-Expires=86400&X-Amz-Signature=29484527256b729d59d294c2d3a3b15c141a1e6cbbfd40a18823aad2d43a53b3&X-Amz-SignedHeaders=host&response-content-disposition=filename%3D%22waeratehist.pdf%22&x-id=GetObject
+    # sum the total monthly usage 
+    total = Data_all['power'].groupby(pd.Grouper(freq='M')).sum()
+    #total =Data_all.groupby('month').sum()['power']
+    total = total.to_frame()
+    total =total.reset_index()
+     
+    
+    #monthly electric charge for WA, tariff rates from Avista
+    charge_basic= 9
+    charge_first800= 0.08519
+    charge_next700 = 0.09911
+    charge_over1500 = 0.11621
+    
+    total['monthly_charge']=np.nan
+    total['charge_perkw']=np.nan
+    
+    for ii in range(0,len(total)):
+        monthly_usage = total.power[ii]/4
+        if monthly_usage <= 800:
+            charge1= charge_first800*monthly_usage
+        if monthly_usage>800 and monthly_usage-800<=700:
+            charge1 = charge_first800*800+charge_next700*(monthly_usage-800)
+        else:
+            if monthly_usage>1500:
+                charge1 = charge_first800*800+charge_next700*700+charge_over1500*(monthly_usage-1500)
+    
+        Monthly_charge = charge_basic+charge1
+        charge_perKWh = Monthly_charge/monthly_usage
+        total['monthly_charge'][ii]=Monthly_charge
+        total['charge_perkw'][ii]=charge_perKWh
+    
+    total['month']= total.all_time.dt.month
+    total =total.rename(columns={'power': 'monthly_consumption'})
+    total = total.drop(columns=['all_time'])
+    Data_all = Data_all.reset_index()
+    Data_all=Data_all.merge(total, how ='left', on='month')
+    Data_all = Data_all.set_index('all_time').sort_index()   
+    return(Data_all)
+
+def monthly_charge_Oregon(Data_all):    
+    # sum the total monthly usage 
+    total = Data_all['power'].groupby(pd.Grouper(freq='M')).sum()
+    #total =Data_all.groupby('month').sum()['power']
+    total = total.to_frame()
+    total =total.reset_index()
+     
+    
+    #monthly electric charge for WA, tariff rates from Avista
+    charge_basic= 11
+    transmission_charge =0.00585
+    distribution_charge =0.0542
+    charge_first1000= 0.06642
+    charge_next1000 = 0.07002
+    
+    total['monthly_charge']=np.nan
+    total['charge_perkw']=np.nan
+    
+    for ii in range(0,len(total)):
+        monthly_usage = total.power[ii]/4
+        if monthly_usage <= 1000:
+            charge1= charge_first1000*monthly_usage
+        else:
+            if monthly_usage>1000:
+                charge1 = charge_first1000*1000+charge_next1000*(monthly_usage-1000)
+    
+        Monthly_charge = charge_basic+(transmission_charge+distribution_charge)*monthly_usage+charge1
+        charge_perKWh = Monthly_charge/monthly_usage
+        total['monthly_charge'][ii]=Monthly_charge
+        total['charge_perkw'][ii]=charge_perKWh
+    
+    total['month']= total.all_time.dt.month
+    total =total.rename(columns={'power': 'monthly_consumption'})
+    total = total.drop(columns=['all_time'])
+    Data_all = Data_all.reset_index()
+    Data_all=Data_all.merge(total, how ='left', on='month')
+    Data_all = Data_all.set_index('all_time').sort_index()   
+    return(Data_all)
+
+def monthly_charge_Montana(Data_all): 
+    #source: https://www.yvec.com/your-account/electrical-rates/
+    # sum the total monthly usage 
+    total = Data_all['power'].groupby(pd.Grouper(freq='M')).sum()
+    #total =Data_all.groupby('month').sum()['power']
+    total = total.to_frame()
+    total =total.reset_index()
+     
+    
+    #monthly electric charge for WA, tariff rates from Avista
+    charge_basic= 19
+    charge_first1000= 0.1123
+    charge_next1000 = 0.0917
+    charge_over2000 = 0.0917
+
+    total['monthly_charge']=np.nan
+    total['charge_perkw']=np.nan
+    
+    for ii in range(0,len(total)):
+        monthly_usage = total.power[ii]/4
+        if monthly_usage <= 1000:
+            charge1= charge_first1000*monthly_usage
+        if monthly_usage>1000 and monthly_usage-1000<=1000:
+            charge1 = charge_first1000*1000+charge_next1000*(monthly_usage-1000)
+        else:
+            if monthly_usage>2000:
+                charge1 = charge_first1000*1000+charge_next1000*1000+charge_over2000*(monthly_usage-2000)
+    
+    
+        Monthly_charge = charge_basic+charge1
+        charge_perKWh = Monthly_charge/monthly_usage
+        total['monthly_charge'][ii]=Monthly_charge
+        total['charge_perkw'][ii]=charge_perKWh
+    
+    total['month']= total.all_time.dt.month
+    total =total.rename(columns={'power': 'monthly_consumption'})
+    total = total.drop(columns=['all_time'])
+    Data_all = Data_all.reset_index()
+    Data_all=Data_all.merge(total, how ='left', on='month')
+    Data_all = Data_all.set_index('all_time').sort_index()   
+    return(Data_all)
+
+
+
+def house(hid,state):
+    power,temp,weath = house_data(hid)
+    Data_all = update_data(power, temp, weath)
+    if state == 'Idaho':
+        Data_all = monthly_charge_Idaho(Data_all)
+        Data_all['cost']=Data_all['charge_perkw']*Data_all['power']
+    elif state == 'Oregon':
+        Data_all = monthly_charge_Oregon(Data_all)
+        Data_all['cost']=Data_all['charge_perkw']*Data_all['power']
+    elif state == 'Washington':
+        Data_all = monthly_charge_WA(Data_all)
+        Data_all['cost']=Data_all['charge_perkw']*Data_all['power']
+    elif state == 'Montana':
+        Data_all = monthly_charge_Montana(Data_all)
+        Data_all['cost']=Data_all['charge_perkw']*Data_all['power']
+     
+    else:
+        print("function missing")
+    return Data_all
+
+with open("/Users/grishmamanandhar/Documents/Documents/University/Fall 2020/Research/micro grids/AI_agent/Data/Python_dataobj/py_variables.pkl","rb") as f:
+  variables = pickle.load(f)
+AC_sites_final = variables["AC_sites_final"]
+powerdata = variables['powerdata']
+tempdata = variables['tempdata']
+weatherdata = variables['weatherdata']
+
